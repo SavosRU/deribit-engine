@@ -4,7 +4,7 @@ import { IV } from './bs'
 import Promise from 'bluebird'
 import _ from 'lodash/fp'
 import Debug from 'debug'
-import log from '../src/Logger'
+import log from './Logger'
 
 // eslint-disable-next-line no-unused-vars
 let debug = Debug('deribit:engine')
