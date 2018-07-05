@@ -1,6 +1,6 @@
 {
   "name": "deribit-engine",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Engine for deribit.com options trading",
   "main": "./lib/index.js",
   "license": "MIT",
