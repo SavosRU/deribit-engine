@@ -1,0 +1,14 @@
+// Place your settings in this file to overwrite the default settings
+{
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+  "editor.tabSize": 2,
+  "editor.formatOnSave": true,
+  "editor.trimAutoWhitespace": true,
+  "javascript.format.insertSpaceAfterFunctionKeywordForAnonymousFunctions": false,
+  "prettier.semi": false,
+  "prettier.singleQuote": true,
+  "prettier.printWidth": 90,
+  "prettier.trailingComma": "all",
+  "javascript.updateImportsOnFileMove.enabled": "always"
+}
