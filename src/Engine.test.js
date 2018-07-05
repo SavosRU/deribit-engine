@@ -63,8 +63,9 @@ describe('engine', async () => {
   describe('tap', async () => {
     it('getInstrument', async () => {
       let exp = exps[1]
-      await engine.summary(`BTC-${exp}-10000-C`)
-      let e = engine.symbol.BTC.opt[exp].strike['10000'].call
+      let strike = Object.keys(engine.symbol.BTC.opt[exp].strike)[1]
+      await engine.summary(`BTC-${exp}-${strike}-C`)
+      let e = engine.symbol.BTC.opt[exp].strike[strike].call
       expect(e.ask).toBeGreaterThan(0)
     })
   })

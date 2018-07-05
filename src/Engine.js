@@ -240,7 +240,7 @@ class Engine {
         i.ask = r.result.askPrice
         i.mid = r.result.midPrice
       })
-      .catch(debug)
+      .catch(log.error)
 
     let callsPuts = _.flow(
       _.keys,
