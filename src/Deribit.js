@@ -1,7 +1,7 @@
 import WS from 'ws'
 import { RestClient } from 'deribit-api'
 
-let address = process.env.LIVENET
+let address = process.env.DERIBIT_LIVENET
   ? 'wss://www.deribit.com/ws/api/v1'
   : 'wss://test.deribit.com/ws/api/v1'
 

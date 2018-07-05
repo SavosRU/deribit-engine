@@ -29,7 +29,15 @@ class Engine {
   }
 
   async init() {
-    await this.instruments
+    await this.instruments()
+    await this.update()
+    setInterval(async () => {
+      await this.update()
+    }, 5000)
+  }
+
+  async update() {
+    await Promise.map(this.expirations(), one => this.initExpiration(one))
   }
 
   async instruments() {
@@ -283,7 +291,7 @@ class Engine {
         })
       },
       { concurrency: 2 },
-    ).catch(err => log.error(err))
+    ).catch(log.error)
 
     chain.IV = this.ATMIV(exp)
     chain.ATM = this.ATM(exp)
