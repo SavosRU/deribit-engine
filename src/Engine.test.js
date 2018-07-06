@@ -29,6 +29,10 @@ describe('engine', async () => {
     expect(Object.keys(engine.symbol.BTC.fut).length).toBeGreaterThan(1)
   })
 
+  it('futurePrice', async () => {
+    expect(engine.futurePrice(exps[1])).toBeGreaterThan(1)
+  })
+
   it('expirations', () => {
     expect(exps.length).toBeGreaterThan(1)
     expect(exps[0]).toMatch(/18/)

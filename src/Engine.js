@@ -208,6 +208,10 @@ class Engine {
     )(this.symbol[symbol].fut)
   }
 
+  futurePrice(exp, symbol = 'BTC') {
+    return this.symbol[symbol].fut[this.futureCode(exp)].mid
+  }
+
   ATM(exp, symbol = 'BTC') {
     let chain = this.symbol[symbol].opt[exp]
     let price = this.symbol[symbol].fut[this.futureCode(exp)].mid
