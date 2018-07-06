@@ -1,6 +1,5 @@
 import 'dotenv/config'
 import engine from './Engine'
-import Promise from 'bluebird'
 import Debug from 'debug'
 
 // eslint-disable-next-line no-unused-vars
@@ -10,9 +9,8 @@ describe('engine', async () => {
   let exps
 
   beforeAll(async () => {
-    await engine.instruments()
+    await engine.init()
     exps = engine.expirations()
-    await Promise.map(exps, one => engine.initExpiration(one))
   })
 
   it('index', async () => {

@@ -31,9 +31,12 @@ class Engine {
   async init() {
     await this.instruments()
     await this.update()
+  }
+
+  updateInterval(interval = 5) {
     setInterval(async () => {
       await this.update()
-    }, 5000)
+    }, interval * 1000)
   }
 
   async update() {
