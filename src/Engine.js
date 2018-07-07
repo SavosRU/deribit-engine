@@ -13,6 +13,8 @@ const Fee = {
   BTC: 0.0005,
 }
 
+let initialized = false
+
 class Engine {
   constructor() {}
 
@@ -29,8 +31,11 @@ class Engine {
   }
 
   async init() {
-    await this.instruments()
-    await this.update()
+    if (!initialized) {
+      initialized = true
+      await this.instruments()
+      await this.update()
+    }
   }
 
   updateInterval(interval = 5) {
