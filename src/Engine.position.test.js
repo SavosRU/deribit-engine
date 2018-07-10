@@ -9,9 +9,11 @@ describe('position', async () => {
   let exps
 
   beforeAll(async () => {
-    // await engine.init()
     await engine.instruments()
-    // await engine.initExpiration('27JUL18')
+
+    // await engine.initExpiration('31AUG18')
+    // await engine.init()
+
     exps = engine.expirations()
     await engine.positions(true)
   })

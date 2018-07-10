@@ -14,6 +14,14 @@ const Fee = {
 
 let initialized = false
 
+let postOrder = r => {
+  if (r.success) {
+    return r.result
+  } else {
+    throw new Error(r.message)
+  }
+}
+
 class Engine {
   constructor() {
     this._deribit = deribit
@@ -59,7 +67,16 @@ class Engine {
 
   buy(...args) {
     if (process.env.DERIBIT_TRADING) {
-      return this._deribit.buy(...args)
+      if (args.length === 1) {
+        let { instrument, quantity, price, post_only, label } = args[0]
+        return this._deribit
+          .buy(instrument, quantity, price, post_only, label)
+          .then(postOrder)
+      } else {
+        return this._deribit
+          .buy(args[0], args[1], args[2], args[3], args[4])
+          .then(postOrder)
+      }
     } else {
       return Promise.reject(new Error('Enable DERIBIT_TRADING env'))
     }
@@ -67,7 +84,16 @@ class Engine {
 
   sell(...args) {
     if (process.env.DERIBIT_TRADING) {
-      return this._deribit.sell(...args)
+      if (args.length === 1) {
+        let { instrument, quantity, price, post_only, label } = args[0]
+        return this._deribit
+          .sell(instrument, quantity, price, post_only, label)
+          .then(postOrder)
+      } else {
+        return this._deribit
+          .sell(args[0], args[1], args[2], args[3], args[4])
+          .then(postOrder)
+      }
     } else {
       return Promise.reject(new Error('Enable DERIBIT_TRADING env'))
     }
