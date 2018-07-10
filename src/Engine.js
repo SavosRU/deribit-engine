@@ -1,6 +1,5 @@
 import moment from 'moment'
 import deribit from './Deribit'
-import { IV } from './bs'
 import Promise from 'bluebird'
 import _ from 'lodash/fp'
 import Debug from 'debug'
@@ -18,17 +17,43 @@ let initialized = false
 class Engine {
   constructor() {
     this._deribit = deribit
+    this._positions = {}
   }
 
-  summary(instrument) {
-    return deribit.getsummary(instrument).tap(r => {
-      let i = r.result.instrumentName.split('-')
-      let t = i[3] === 'C' ? 'call' : 'put'
-      let addr = this.symbol[i[0]].opt[i[1]].strike['' + i[2]][t]
+  setPositions(positions) {
+    this._positions = positions
+  }
 
-      addr.bid = r.result.bidPrice ? r.result.bidPrice : null
-      addr.ask = r.result.askPrice ? r.result.askPrice : null
-      addr.mid = (addr.bid + addr.ask) / 2
+  orderBook(instrument) {
+    return deribit.getorderbook(instrument).tap(res => {
+      let r = res.result
+
+      let i = r.instrument.split('-')
+      let t = i[3] === 'C' ? 'call' : 'put'
+      let strike = this.symbol[i[0]].opt[i[1]].strike['' + i[2]]
+      let option = this.symbol[i[0]].opt[i[1]].strike['' + i[2]][t]
+
+      option.bid = r.bids[0] && r.bids[0].price ? r.bids[0].price : null
+      option.ask = r.asks[0] && r.asks[0].price ? r.asks[0].price : null
+      option.mid = (option.bid + option.ask) / 2
+
+      option.bids = r.bids
+      option.asks = r.asks
+
+      option.bidIV = r.bidIv
+      option.askIV = r.askIv
+      option.midIV = r.markIv
+
+      option.settlement = r.settlementPrice
+
+      let type = this.typeOTM(i.strike, i.exp)
+
+      if (t === type) {
+        strike.bidIV = option.bidIV
+        strike.askIV = option.askIV
+        strike.midIV = option.midIV
+        strike.spreadIV = Math.abs(strike.bidIV - strike.askIV)
+      }
     })
   }
 
@@ -153,33 +178,53 @@ class Engine {
               range: { bid: 0, ask: 0 },
               strike: _.transform((r, strike) => {
                 r[strike] = {
-                  bid: 0,
-                  ask: 0,
-                  mid: 0,
-                  spread: 0,
+                  bidIV: 0,
+                  askIV: 0,
+                  midIV: 0,
+                  spreadIV: 0,
                   call: {
                     bid: 0,
                     ask: 0,
                     mid: 0,
+                    bidIV: 0,
+                    askIV: 0,
+                    midIV: 0,
+                    settlement: 0,
                     d: 0,
                     g: 0,
                     v: 0,
                     t: 0,
-                    pos: 0,
-                    avg: 0,
-                    avgUSD: 0,
+                    position: () => {
+                      return (
+                        this._positions[`${symbol}-${exp}-${strike}-C`] || {
+                          size: 0,
+                          avg: 0,
+                          avgUSD: 0,
+                        }
+                      )
+                    },
                   },
                   put: {
                     bid: 0,
                     ask: 0,
                     mid: 0,
+                    bidIV: 0,
+                    askIV: 0,
+                    midIV: 0,
+                    settlement: 0,
                     d: 0,
                     g: 0,
                     v: 0,
                     t: 0,
-                    pos: 0,
-                    avg: 0,
-                    avgUSD: 0,
+                    position: () => {
+                      return (
+                        this._positions[`${symbol}-${exp}-${strike}-P`] || {
+                          size: 0,
+                          avg: 0,
+                          avgUSD: 0,
+                        }
+                      )
+                    },
                   },
                   strike,
                 }
@@ -251,7 +296,7 @@ class Engine {
   ATMIV(exp, symbol = 'BTC') {
     let chain = this.symbol[symbol].opt[exp]
     let atm = this.ATM(exp)
-    return chain.strike[atm].mid
+    return chain.strike[atm].midIV
   }
 
   async initExpiration(exp, symbol = 'BTC') {
@@ -270,7 +315,7 @@ class Engine {
         i.ask = r.result.askPrice
         i.mid = r.result.midPrice
       })
-      .catch(log.error)
+      .catch(err => log.error(err))
 
     let callsPuts = _.flow(
       _.keys,
@@ -289,39 +334,10 @@ class Engine {
       callsPuts,
       i => {
         let instrument = `${i.symbol}-${i.exp}-${i.strike}-${i.letter}`
-        return this.summary(instrument).then(r => {
-          if (i.strike >= fut.mid) {
-            chain.strike[i.strike].bid = r.result.bidPrice
-              ? IV(i.type, fut.ask, i.strike, chain.days, r.result.bidPrice * fut.ask) *
-                100
-              : null
-
-            chain.strike[i.strike].ask = r.result.askPrice
-              ? IV(i.type, fut.bid, i.strike, chain.days, r.result.askPrice * fut.bid) *
-                100
-              : null
-          } else {
-            chain.strike[i.strike].bid = r.result.bidPrice
-              ? IV(i.type, fut.bid, i.strike, chain.days, r.result.bidPrice * fut.bid) *
-                100
-              : null
-
-            chain.strike[i.strike].ask = r.result.askPrice
-              ? IV(i.type, fut.ask, i.strike, chain.days, r.result.askPrice * fut.ask) *
-                100
-              : null
-          }
-
-          chain.strike[i.strike].mid =
-            (chain.strike[i.strike].ask + chain.strike[i.strike].bid) / 2
-
-          chain.strike[i.strike].spread = Math.abs(
-            chain.strike[i.strike].ask - chain.strike[i.strike].bid,
-          )
-        })
+        return this.orderBook(instrument)
       },
       { concurrency: 2 },
-    ).catch(log.error)
+    ).catch(err => log.error(err))
 
     chain.IV = this.ATMIV(exp)
     chain.ATM = this.ATM(exp)

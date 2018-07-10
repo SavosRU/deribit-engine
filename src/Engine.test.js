@@ -52,9 +52,9 @@ describe('engine', async () => {
     let strikes = Object.keys(exp.strike)
     expect(strikes.length).toBeGreaterThan(3)
 
-    expect(exp.strike[strikes[0]]).toHaveProperty('bid')
-    expect(exp.strike[strikes[0]]).toHaveProperty('ask')
-    expect(exp.strike[strikes[0]]).toHaveProperty('mid')
+    expect(exp.strike[strikes[0]]).toHaveProperty('bidIV')
+    expect(exp.strike[strikes[0]]).toHaveProperty('askIV')
+    expect(exp.strike[strikes[0]]).toHaveProperty('midIV')
     expect(exp.strike[strikes[0]]).toHaveProperty('strike', +strikes[0])
   })
 
@@ -63,10 +63,10 @@ describe('engine', async () => {
   })
 
   describe('tap', async () => {
-    it('getInstrument', async () => {
+    it('orderbook', async () => {
       let exp = exps[1]
       let strike = Object.keys(engine.symbol.BTC.opt[exp].strike)[1]
-      await engine.summary(`BTC-${exp}-${strike}-C`)
+      await engine.orderBook(`BTC-${exp}-${strike}-C`)
       let e = engine.symbol.BTC.opt[exp].strike[strike].call
       expect(e.ask).toBeGreaterThan(0)
     })
@@ -91,5 +91,17 @@ describe('engine', async () => {
   it('get ATM straddle price', () => {
     expect(engine.ATMStraddle('27JUL18', 'bid')).toBeGreaterThan(0)
     expect(engine.ATMStraddle('27JUL18', 'ask')).toBeGreaterThan(0)
+  })
+
+  it('position', () => {
+    engine.setPositions({
+      'BTC-28DEC18-15000-C': {
+        size: 5,
+        avg: 0.0125,
+        avgUSD: 231,
+      },
+    })
+
+    expect(engine.symbol.BTC.opt['28DEC18'].strike[15000].call.position().size).toBe(5)
   })
 })
