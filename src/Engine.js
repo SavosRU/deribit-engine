@@ -16,7 +16,9 @@ const Fee = {
 let initialized = false
 
 class Engine {
-  constructor() {}
+  constructor() {
+    this._deribit = deribit
+  }
 
   summary(instrument) {
     return deribit.getsummary(instrument).tap(r => {
@@ -28,6 +30,22 @@ class Engine {
       addr.ask = r.result.askPrice ? r.result.askPrice : null
       addr.mid = (addr.bid + addr.ask) / 2
     })
+  }
+
+  buy(...args) {
+    if (process.env.DERIBIT_TRADING) {
+      return this._deribit.buy(...args)
+    } else {
+      return Promise.reject(new Error('Enable DERIBIT_TRADING env'))
+    }
+  }
+
+  sell(...args) {
+    if (process.env.DERIBIT_TRADING) {
+      return this._deribit.sell(...args)
+    } else {
+      return Promise.reject(new Error('Enable DERIBIT_TRADING env'))
+    }
   }
 
   async init() {
