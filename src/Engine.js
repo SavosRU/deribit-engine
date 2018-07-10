@@ -46,9 +46,9 @@ class Engine {
 
       option.settlement = r.settlementPrice
 
-      let type = this.typeOTM(i.strike, i.exp)
+      let atm = this.ATM(i[1], i[0])
 
-      if (t === type) {
+      if ((+i[2] >= atm && t === 'call') || (+i[2] < atm && t === 'put')) {
         strike.bidIV = option.bidIV
         strike.askIV = option.askIV
         strike.midIV = option.midIV
@@ -244,26 +244,33 @@ class Engine {
     )(this.symbol[symbol].opt)
   }
 
-  async positions() {
-    await deribit
-      .positions()
-      .then(r => r.result)
-      .then(
-        _.flow(
-          _.filter({ kind: 'option' }),
-          _.map(p => {
-            let i = p.instrument.split('-')
-            let t = i[3] === 'C' ? 'call' : 'put'
-            let addr = this.symbol[i[0]].opt[i[1]].strike['' + i[2]][t]
-            addr.pos = p.size
-            addr.avg = p.averagePrice
-            addr.avgUSD = p.averageUsdPrice
-            addr.pnl = p.floatingPl
-            addr.pnlUSD = p.floatingUsdPl
-            addr.td = p.delta
-          }),
-        ),
-      )
+  async positions(update = false) {
+    if (update) {
+      return await deribit
+        .positions()
+        .then(r => r.result)
+        .then(
+          _.flow(
+            _.filter({ kind: 'option' }),
+            _.transform((r, p) => {
+              r[p.instrument] = {
+                size: p.size,
+                avg: p.averagePrice,
+                avgUSD: p.averageUsdPrice,
+                pnl: p.floatingPl,
+                pnlUSD: p.floatingUsdPl,
+                td: p.delta,
+              }
+            }, {}),
+          ),
+        )
+        .then(p => {
+          this._positions = p
+          return p
+        })
+    } else {
+      return this._positions
+    }
   }
 
   futureCode(exp, symbol = 'BTC') {

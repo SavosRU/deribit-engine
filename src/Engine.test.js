@@ -10,6 +10,8 @@ describe('engine', async () => {
 
   beforeAll(async () => {
     await engine.init()
+    // await engine.instruments()
+    // await engine.initExpiration('27JUL18')
     exps = engine.expirations()
   })
 
@@ -56,10 +58,6 @@ describe('engine', async () => {
     expect(exp.strike[strikes[0]]).toHaveProperty('askIV')
     expect(exp.strike[strikes[0]]).toHaveProperty('midIV')
     expect(exp.strike[strikes[0]]).toHaveProperty('strike', +strikes[0])
-  })
-
-  it('positions', async () => {
-    await engine.positions()
   })
 
   describe('tap', async () => {
