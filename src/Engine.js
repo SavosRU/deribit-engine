@@ -200,6 +200,9 @@ class Engine {
                           size: 0,
                           avg: 0,
                           avgUSD: 0,
+                          pnl: 0,
+                          pnlUSD: 0,
+                          td: 0,
                         }
                       )
                     },
@@ -222,6 +225,9 @@ class Engine {
                           size: 0,
                           avg: 0,
                           avgUSD: 0,
+                          pnl: 0,
+                          pnlUSD: 0,
+                          td: 0,
                         }
                       )
                     },
@@ -242,6 +248,16 @@ class Engine {
       _.sortBy('days'),
       _.map('code'),
     )(this.symbol[symbol].opt)
+  }
+
+  async delta(exp, update = false) {
+    return _.flow(
+      _.toPairs,
+      _.filter(p => {
+        return exp ? p[0].includes(exp) : true
+      }),
+      _.sumBy(p => p[1].td),
+    )(await this.positions(update))
   }
 
   async positions(update = false) {

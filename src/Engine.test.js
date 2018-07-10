@@ -90,16 +90,4 @@ describe('engine', async () => {
     expect(engine.ATMStraddle('27JUL18', 'bid')).toBeGreaterThan(0)
     expect(engine.ATMStraddle('27JUL18', 'ask')).toBeGreaterThan(0)
   })
-
-  it('position', () => {
-    engine.setPositions({
-      'BTC-28DEC18-15000-C': {
-        size: 5,
-        avg: 0.0125,
-        avgUSD: 231,
-      },
-    })
-
-    expect(engine.symbol.BTC.opt['28DEC18'].strike[15000].call.position().size).toBe(5)
-  })
 })
