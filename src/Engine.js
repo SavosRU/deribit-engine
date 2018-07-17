@@ -1,5 +1,5 @@
 import moment from 'moment'
-import deribit from './Deribit'
+import { REST, WS } from 'deribit-ws-js'
 import Promise from 'bluebird'
 import _ from 'lodash/fp'
 import Debug from 'debug'
@@ -12,99 +12,95 @@ const Fee = {
   BTC: 0.0005,
 }
 
-let initialized = false
-
-let postOrder = r => {
-  if (r.success) {
-    return r.result
-  } else {
-    throw new Error(r.message)
-  }
-}
-
-class Engine {
-  constructor() {
-    this._deribit = deribit
+export default class Engine {
+  constructor(deribit, ws) {
+    this._deribit = deribit ? deribit : new REST()
+    this._ws = ws ? ws : new WS()
     this._positions = {}
+    this.initialized = false
   }
 
   setPositions(positions) {
     this._positions = positions
   }
 
-  orderBook(instrument) {
-    return deribit.getorderbook(instrument).tap(res => {
-      let r = res.result
-
-      let i = r.instrument.split('-')
-      let t = i[3] === 'C' ? 'call' : 'put'
-      let strike = this.symbol[i[0]].opt[i[1]].strike['' + i[2]]
-      let option = this.symbol[i[0]].opt[i[1]].strike['' + i[2]][t]
-
-      option.bid = r.bids[0] && r.bids[0].price ? r.bids[0].price : null
-      option.ask = r.asks[0] && r.asks[0].price ? r.asks[0].price : null
-      option.mid = (option.bid + option.ask) / 2
-
-      option.bids = r.bids
-      option.asks = r.asks
-
-      option.bidIV = r.bidIv
-      option.askIV = r.askIv
-      option.midIV = r.markIv
-
-      option.settlement = r.settlementPrice
-
-      let atm = this.ATM(i[1], i[0])
-
-      if ((+i[2] >= atm && t === 'call') || (+i[2] < atm && t === 'put')) {
-        strike.bidIV = option.bidIV
-        strike.askIV = option.askIV
-        strike.midIV = option.midIV
-        strike.spreadIV = Math.abs(strike.bidIV - strike.askIV)
-      }
-    })
-  }
-
-  buy(...args) {
-    if (process.env.DERIBIT_TRADING) {
-      if (args.length === 1) {
-        let { instrument, quantity, price, post_only, label } = args[0]
-        return this._deribit
-          .buy(instrument, quantity, price, post_only, label)
-          .then(postOrder)
-      } else {
-        return this._deribit
-          .buy(args[0], args[1], args[2], args[3], args[4])
-          .then(postOrder)
-      }
-    } else {
-      return Promise.reject(new Error('Enable DERIBIT_TRADING env'))
-    }
-  }
-
-  sell(...args) {
-    if (process.env.DERIBIT_TRADING) {
-      if (args.length === 1) {
-        let { instrument, quantity, price, post_only, label } = args[0]
-        return this._deribit
-          .sell(instrument, quantity, price, post_only, label)
-          .then(postOrder)
-      } else {
-        return this._deribit
-          .sell(args[0], args[1], args[2], args[3], args[4])
-          .then(postOrder)
-      }
-    } else {
-      return Promise.reject(new Error('Enable DERIBIT_TRADING env'))
-    }
+  getOrderBook(instrument) {
+    return this._deribit
+      .getOrderbook({ instrument })
+      .then(r => this.orderBook(r))
+      .catch(err => log.error(err))
   }
 
   async init() {
-    if (!initialized) {
-      initialized = true
+    if (!this.initialized) {
+      this.initialized = true
       await this.instruments()
+      this._ws.hook('order_book', msg => this.orderBook(msg))
       await this.update()
     }
+  }
+
+  orderBook(msg) {
+    if (!msg.instrument) {
+      debug(msg)
+    }
+
+    if (['C', 'P'].includes(msg.instrument.substring(msg.instrument.length - 1))) {
+      this.optionOrderBook(msg)
+    } else {
+      this.futuresOrderBook(msg)
+    }
+  }
+
+  optionOrderBook(r) {
+    let [symbol, exp, strikeStr, type] = r.instrument.split('-')
+    let t = type === 'C' ? 'call' : 'put'
+
+    if (!this.symbol[symbol].opt[exp].strike['' + strikeStr]) {
+      return
+    }
+
+    let strike = this.symbol[symbol].opt[exp].strike['' + strikeStr]
+    let option = this.symbol[symbol].opt[exp].strike['' + strikeStr][t]
+
+    option.bid = r.bids[0] && r.bids[0].price ? r.bids[0].price : null
+    option.ask = r.asks[0] && r.asks[0].price ? r.asks[0].price : null
+    option.mid = (option.bid + option.ask) / 2
+
+    option.bids = r.bids
+    option.asks = r.asks
+
+    option.bidIV = r.bidIv
+    option.askIV = r.askIv
+    option.midIV = (r.bidIv + r.askIv) / 2
+
+    strike.state = r.state
+    option.settlement = r.settlementPrice
+
+    let price = this.futurePrice(exp)
+
+    if ((+strikeStr >= price && t === 'call') || (+strikeStr < price && t === 'put')) {
+      strike.bidIV = option.bidIV
+      strike.askIV = option.askIV
+      strike.midIV = option.midIV
+      strike.spreadIV = Math.abs(strike.bidIV - strike.askIV)
+    }
+
+    return r
+  }
+
+  futuresOrderBook(r) {
+    let [symbol, exp] = r.instrument.split('-')
+
+    if (!this.symbol[symbol].fut[exp]) {
+      return
+    }
+
+    let i = this.symbol[symbol].fut[exp]
+    i.state = r.state
+    i.bid = r.bids[0].price || null
+    i.ask = r.asks[0].price || null
+    i.mid = i.bid && i.ask ? (i.bid + i.ask) / 2 : i.bid
   }
 
   updateInterval(interval = 5) {
@@ -118,7 +114,7 @@ class Engine {
   }
 
   async instruments() {
-    let { result } = await deribit.getinstruments()
+    let result = await this._deribit.getInstruments()
 
     this.symbol = _.flow(
       _.map('baseCurrency'),
@@ -150,6 +146,7 @@ class Engine {
               code: exp,
               date: moment(exp, 'DDMMMYY'),
               days: moment.duration(moment(exp, 'DDMMMYY').diff(moment())).as('days'),
+              state: '',
               bid: 0,
               ask: 0,
               mid: 0,
@@ -199,6 +196,7 @@ class Engine {
               code: exp,
               date: moment(exp, 'DDMMMYY'),
               days: moment.duration(moment(exp, 'DDMMMYY').diff(moment())).as('days'),
+              state: '',
               IV: 0,
               ATM: 0,
               range: { bid: 0, ask: 0 },
@@ -288,9 +286,8 @@ class Engine {
 
   async positions(update = false) {
     if (update) {
-      return await deribit
+      return await this._deribit
         .positions()
-        .then(r => r.result)
         .then(
           _.flow(
             _.filter({ kind: 'option' }),
@@ -339,6 +336,7 @@ class Engine {
     return _.flow(
       _.sortBy(strike => Math.abs(strike - price)),
       _.head,
+      Number,
     )(Object.keys(chain.strike))
   }
 
@@ -356,15 +354,7 @@ class Engine {
     let fut = this.symbol[symbol].fut[futCode]
     fut.days = moment.duration(moment(fut.date).diff(moment())).as('days')
 
-    await deribit
-      .getsummary(`${symbol}-${futCode}`)
-      .then(r => {
-        let i = this.symbol[symbol].fut[futCode]
-        i.bid = r.result.bidPrice
-        i.ask = r.result.askPrice
-        i.mid = r.result.midPrice
-      })
-      .catch(err => log.error(err))
+    await this.getOrderBook(`${symbol}-${futCode}`)
 
     let callsPuts = _.flow(
       _.keys,
@@ -381,10 +371,7 @@ class Engine {
 
     await Promise.map(
       callsPuts,
-      i => {
-        let instrument = `${i.symbol}-${i.exp}-${i.strike}-${i.letter}`
-        return this.orderBook(instrument)
-      },
+      i => this.getOrderBook(`${i.symbol}-${i.exp}-${i.strike}-${i.letter}`),
       { concurrency: 2 },
     ).catch(err => log.error(err))
 
@@ -407,9 +394,7 @@ class Engine {
     let atmDiff = Math.abs(chain.ATM - price)
     let fee = 2 * Fee[symbol]
     fee = bidask === 'bid' ? -fee : fee
-    atmDiff = price <= chain.ATM ? atmDiff : -atmDiff
+    atmDiff = price <= chain.ATM ? -atmDiff : atmDiff
     return 2 * atmPrice * price + atmDiff + fee * price
   }
 }
-
-export default new Engine()

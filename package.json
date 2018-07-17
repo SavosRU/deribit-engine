@@ -76,6 +76,12 @@
       ]
     ]
   },
+  "jest": {
+    "roots": [
+      "src"
+    ],
+    "testEnvironment": "node"
+  },
   "dependencies": {
     "babel-cli": "^6.26.0",
     "babel-core": "^6.26.0",
@@ -86,7 +92,7 @@
     "bluebird": "^3.5.1",
     "bunyan": "^1.8.12",
     "debug": "^3.1.0",
-    "deribit-api": "^1.0.2",
+    "deribit-ws-js": "^1.0.0",
     "dotenv": "^5.0.0",
     "lodash": "^4.17.10",
     "moment": "^2.22.2"

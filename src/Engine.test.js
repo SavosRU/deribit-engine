@@ -1,5 +1,6 @@
 import 'dotenv/config'
-import engine from './Engine'
+import Engine from './Engine'
+import { REST } from 'deribit-ws-js'
 import Debug from 'debug'
 
 // eslint-disable-next-line no-unused-vars
@@ -7,8 +8,19 @@ let debug = Debug('deribit:engine')
 
 describe('engine', async () => {
   let exps
+  let engine
 
   beforeAll(async () => {
+    let rest = new REST(
+      process.env.DERIBIT_KEY,
+      process.env.DERIBIT_SECRET,
+      false,
+      1000,
+      false,
+    )
+
+    engine = new Engine(rest)
+
     await engine.init()
     // await engine.instruments()
     // await engine.initExpiration('27JUL18')
@@ -60,16 +72,6 @@ describe('engine', async () => {
     expect(exp.strike[strikes[0]]).toHaveProperty('strike', +strikes[0])
   })
 
-  describe('tap', async () => {
-    it('orderbook', async () => {
-      let exp = exps[1]
-      let strike = Object.keys(engine.symbol.BTC.opt[exp].strike)[1]
-      await engine.orderBook(`BTC-${exp}-${strike}-C`)
-      let e = engine.symbol.BTC.opt[exp].strike[strike].call
-      expect(e.ask).toBeGreaterThan(0)
-    })
-  })
-
   describe('initExp', async () => {
     let exp
 
@@ -82,7 +84,7 @@ describe('engine', async () => {
     })
 
     it('getATMIV', async () => {
-      expect(engine.symbol.BTC.opt[exp].IV).toBeGreaterThan(1)
+      expect(engine.ATMIV(exp)).toBeGreaterThan(1)
     })
   })
 
