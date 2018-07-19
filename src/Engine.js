@@ -331,7 +331,7 @@ export default class Engine {
 
   ATM(exp, symbol = 'BTC') {
     let chain = this.symbol[symbol].opt[exp]
-    let price = this.symbol[symbol].fut[this.futureCode(exp)].mid
+    let price = this.futurePrice(exp, symbol)
 
     return _.flow(
       _.sortBy(strike => Math.abs(strike - price)),
@@ -381,20 +381,19 @@ export default class Engine {
     debug(`Init expiration ${exp} finished`)
   }
 
-  typeOTM(strike, exp, symbol = 'BTC') {
-    let futCode = this.futureCode(exp)
-    let price = this.symbol[symbol].fut[futCode].mid
-    return strike >= price ? 'call' : 'put'
+  typeOTM(exp, symbol = 'BTC') {
+    let price = this.futurePrice(exp, symbol)
+    let chain = this.symbol[symbol].opt[exp]
+    return chain.ATM >= price ? 'call' : 'put'
   }
 
   ATMStraddle(exp, bidask = 'ask', symbol = 'BTC') {
     let chain = this.symbol[symbol].opt[exp]
-    let price = this.symbol[symbol].fut[this.futureCode(exp)].mid
-    let atmPrice = chain.strike[chain.ATM][this.typeOTM(chain.ATM, exp)][bidask]
+    let price = this.futurePrice(exp, symbol)
+    let atmPrice = chain.strike[chain.ATM][this.typeOTM(exp)][bidask]
     let atmDiff = Math.abs(chain.ATM - price)
     let fee = 2 * Fee[symbol]
     fee = bidask === 'bid' ? -fee : fee
-    atmDiff = price <= chain.ATM ? -atmDiff : atmDiff
     return 2 * atmPrice * price + atmDiff + fee * price
   }
 }
