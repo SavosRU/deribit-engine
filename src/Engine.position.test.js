@@ -32,6 +32,11 @@ describe('position', async () => {
     ).toBeGreaterThan(1)
   })
 
+  it('future', async () => {
+    let fp = engine.symbol.BTC.fut['27JUL18'].position()
+    expect(fp).toHaveProperty('avgUSD')
+  })
+
   it('delta', async () => {
     expect(await engine.delta()).toBeGreaterThan(1)
   })

@@ -41,8 +41,14 @@ export default class Engine {
   }
 
   orderBook(msg) {
+    if (msg.edp && msg.btc) {
+      this.symbol.BTC.ind = msg.btc
+      return
+    }
+
     if (!msg.instrument) {
-      debug(msg)
+      log.error('Missing instrument', msg)
+      return
     }
 
     if (['C', 'P'].includes(msg.instrument.substring(msg.instrument.length - 1))) {
@@ -116,157 +122,190 @@ export default class Engine {
   async instruments() {
     let result = await this._deribit.getInstruments()
 
-    this.symbol = _.flow(
+    this.symbol = this.symbol || {}
+
+    _.flow(
       _.map('baseCurrency'),
       _.uniq,
-      _.transform((r, symbol) => {
-        r[symbol] = { fut: {}, opt: {}, ind: 0 }
-      }, {}),
+      _.map(curr => {
+        if (!this.symbol[curr]) {
+          this.symbol[curr] = { fut: {}, opt: {}, ind: 0 }
+        }
+      }),
     )(result)
 
     // Futures
 
-    _.flow(
-      _.map(symbol => {
-        _.flow(
-          _.filter({
-            kind: 'future',
-            baseCurrency: symbol,
-            currency: 'USD',
-          }),
-          _.map(
-            _.flow(
-              _.get('instrumentName'),
-              _.split('-'),
-              _.nth(1),
-            ),
+    _.map(symbol => {
+      _.flow(
+        _.filter({
+          kind: 'future',
+          baseCurrency: symbol,
+          currency: 'USD',
+        }),
+        _.map(
+          _.flow(
+            _.get('instrumentName'),
+            _.split('-'),
+            _.nth(1),
           ),
-          _.transform((r, exp) => {
-            r[exp] = {
+        ),
+        _.map(exp => {
+          let f = this.symbol[symbol].fut
+          if (!f[exp]) {
+            f[exp] = {
               code: exp,
               date: moment(exp, 'DDMMMYY'),
               days: moment.duration(moment(exp, 'DDMMMYY').diff(moment())).as('days'),
-              state: '',
-              bid: 0,
-              ask: 0,
-              mid: 0,
+              state: null,
+              bid: null,
+              ask: null,
+              mid: null,
+              position: () => {
+                let r = this._positions[`${symbol}-${exp}`] || {
+                  size: 0,
+                  sizeBTC: 0,
+                  avg: 0,
+                  avgUSD: 0,
+                  pnl: 0,
+                  pnlUSD: 0,
+                  td: 0,
+                }
+
+                r.pnlUSD = r.pnl * this.futurePrice(exp, symbol)
+
+                return r
+              },
             }
-          }, {}),
-          r => {
-            this.symbol[symbol].fut = r
-          },
-        )(result)
-      }),
-    )(Object.keys(this.symbol))
+          }
+        }),
+      )(result)
+    })(Object.keys(this.symbol))
 
     // Options
 
-    _.flow(
-      _.map(symbol => {
-        _.flow(
-          _.filter({
-            kind: 'option',
-            baseCurrency: symbol,
-            currency: 'USD',
-          }),
-          _.map(
-            _.flow(
-              _.get('instrumentName'),
-              _.split('-'),
-              _.nth(1),
-            ),
+    _.map(symbol => {
+      _.flow(
+        _.filter({
+          kind: 'option',
+          baseCurrency: symbol,
+          currency: 'USD',
+        }),
+        _.map(
+          _.flow(
+            _.get('instrumentName'),
+            _.split('-'),
+            _.nth(1),
           ),
-          _.uniq,
-          _.reduce((r, exp) => {
-            let strikes = _.flow(
-              _.filter({
-                kind: 'option',
-                baseCurrency: symbol,
-                currency: 'USD',
-              }),
-              _.filter(e => {
-                return _.includes(exp, e.instrumentName)
-              }),
-              _.map('strike'),
-              _.uniq,
-              _.sortBy(Number),
-            )(result)
+        ),
+        _.uniq,
+        _.map(exp => {
+          // Expirations
 
-            this.symbol[symbol].opt[exp] = {
-              code: exp,
-              date: moment(exp, 'DDMMMYY'),
-              days: moment.duration(moment(exp, 'DDMMMYY').diff(moment())).as('days'),
-              state: '',
-              IV: 0,
-              ATM: 0,
-              range: { bid: 0, ask: 0 },
-              strike: _.transform((r, strike) => {
-                r[strike] = {
-                  bidIV: 0,
-                  askIV: 0,
-                  midIV: 0,
-                  spreadIV: 0,
-                  call: {
-                    bid: 0,
-                    ask: 0,
-                    mid: 0,
-                    bidIV: 0,
-                    askIV: 0,
-                    midIV: 0,
-                    settlement: 0,
-                    d: 0,
-                    g: 0,
-                    v: 0,
-                    t: 0,
-                    position: () => {
-                      return (
-                        this._positions[`${symbol}-${exp}-${strike}-C`] || {
-                          size: 0,
-                          avg: 0,
-                          avgUSD: 0,
-                          pnl: 0,
-                          pnlUSD: 0,
-                          td: 0,
-                        }
-                      )
-                    },
+          this.symbol[symbol].opt[exp] = this.symbol[symbol].opt[exp] || {
+            code: exp,
+            date: moment(exp, 'DDMMMYY'),
+            days: moment.duration(moment(exp, 'DDMMMYY').diff(moment())).as('days'),
+            state: null,
+            IV: null,
+            ATM: null,
+            range: { bid: null, ask: null },
+            strike: {},
+          }
+
+          // Strikes
+
+          let expAddr = this.symbol[symbol].opt[exp].strike
+
+          _.flow(
+            _.filter({
+              kind: 'option',
+              baseCurrency: symbol,
+              currency: 'USD',
+            }),
+            _.filter(e => _.includes(exp, e.instrumentName)),
+            _.map('strike'),
+            _.uniq,
+            _.sortBy(Number),
+            _.map(strike => {
+              if (expAddr[strike]) {
+                return
+              }
+
+              expAddr[strike] = {
+                strike,
+                bidIV: null,
+                askIV: null,
+                midIV: null,
+                spreadIV: null,
+                call: {
+                  bid: null,
+                  ask: null,
+                  mid: null,
+                  bidIV: null,
+                  askIV: null,
+                  midIV: null,
+                  settlement: null,
+                  d: null,
+                  g: null,
+                  v: null,
+                  t: null,
+                  position: () => {
+                    return (
+                      this._positions[`${symbol}-${exp}-${strike}-C`] || {
+                        size: 0,
+                        avg: 0,
+                        avgUSD: 0,
+                        pnl: 0,
+                        pnlUSD: 0,
+                        td: 0,
+                      }
+                    )
                   },
-                  put: {
-                    bid: 0,
-                    ask: 0,
-                    mid: 0,
-                    bidIV: 0,
-                    askIV: 0,
-                    midIV: 0,
-                    settlement: 0,
-                    d: 0,
-                    g: 0,
-                    v: 0,
-                    t: 0,
-                    position: () => {
-                      return (
-                        this._positions[`${symbol}-${exp}-${strike}-P`] || {
-                          size: 0,
-                          avg: 0,
-                          avgUSD: 0,
-                          pnl: 0,
-                          pnlUSD: 0,
-                          td: 0,
-                        }
-                      )
-                    },
+                },
+                put: {
+                  bid: null,
+                  ask: null,
+                  mid: null,
+                  bidIV: null,
+                  askIV: null,
+                  midIV: null,
+                  settlement: null,
+                  d: null,
+                  g: null,
+                  v: null,
+                  t: null,
+                  position: () => {
+                    return (
+                      this._positions[`${symbol}-${exp}-${strike}-P`] || {
+                        size: 0,
+                        avg: 0,
+                        avgUSD: 0,
+                        pnl: 0,
+                        pnlUSD: 0,
+                        td: 0,
+                      }
+                    )
                   },
-                  strike,
-                }
-              }, {})(strikes),
-            }
-          }, {}),
-        )(result)
-      }),
-    )(Object.keys(this.symbol))
+                },
+              }
+            }),
+          )(result)
+        }),
+      )(result)
+    })(Object.keys(this.symbol))
   }
 
   expirations(symbol = 'BTC') {
+    return _.flow(
+      _.map(_.pick(['code', 'days', 'state'])),
+      _.filter(o => o.state === 'open' || o.state === null),
+      _.sortBy('days'),
+      _.map('code'),
+    )(this.symbol[symbol].opt)
+  }
+
+  expirationsAll(symbol = 'BTC') {
     return _.flow(
       _.map(_.pick(['code', 'days'])),
       _.sortBy('days'),
@@ -290,15 +329,27 @@ export default class Engine {
         .positions()
         .then(
           _.flow(
-            _.filter({ kind: 'option' }),
             _.transform((r, p) => {
-              r[p.instrument] = {
-                size: p.size,
-                avg: p.averagePrice,
-                avgUSD: p.averageUsdPrice,
-                pnl: p.floatingPl,
-                pnlUSD: p.floatingUsdPl,
-                td: p.delta,
+              if (p.kind === 'option') {
+                r[p.instrument] = {
+                  size: p.size,
+                  avg: p.averagePrice,
+                  avgUSD: p.averageUsdPrice,
+                  pnl: p.floatingPl,
+                  pnlUSD: p.floatingUsdPl,
+                  td: p.delta,
+                }
+              }
+
+              if (p.kind === 'future') {
+                r[p.instrument] = {
+                  size: p.size,
+                  avg: p.averagePrice,
+                  avgUSD: p.averagePrice,
+                  pnl: p.profitLoss,
+                  pnlUSD: p.floatingUsdPl,
+                  td: p.delta,
+                }
               }
             }, {}),
           ),
