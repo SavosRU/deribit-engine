@@ -113,6 +113,10 @@ export default class Engine {
     setInterval(async () => {
       await this.update()
     }, interval * 1000)
+
+    setInterval(async () => {
+      await this.instruments()
+    }, 10 * 60 * 1000)
   }
 
   async update() {
