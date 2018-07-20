@@ -443,6 +443,10 @@ export default class Engine {
   }
 
   ATMStraddle(exp, bidask = 'ask', symbol = 'BTC') {
+    if (!this.expirations().includes(exp)) {
+      throw new Error(`Unkown expiration - ${exp}`)
+    }
+
     let chain = this.symbol[symbol].opt[exp]
     let price = this.futurePrice(exp, symbol)
     let atmPrice = chain.strike[chain.ATM][this.typeOTM(exp)][bidask]
